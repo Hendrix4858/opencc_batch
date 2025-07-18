@@ -1,55 +1,106 @@
 import os
+import shutil
 import mimetypes
 import click
 from opencc import OpenCC
+import chardet
 
 def is_text_file(path):
     mime, _ = mimetypes.guess_type(path)
-    return mime is not None and mime.startswith("text")
+    return mime and mime.startswith("text")
 
-def convert_string(text, to_traditional):
-    converter = OpenCC("s2t" if to_traditional else "t2s")
-    result = converter.convert(text)
-    click.echo(result)
+def detect_encoding(path):
+    with open(path, 'rb') as f:
+        raw = f.read(2048)
+    return chardet.detect(raw)['encoding']
 
-def convert_file(path, to_traditional):
-    converter = OpenCC("s2t" if to_traditional else "t2s")
-    files = []
+def ensure_utf8_encoding(path):
+    encoding = detect_encoding(path)
+    if encoding.lower() != 'utf-8':
+        click.echo(f"文件 {path} 当前编码为 {encoding}，不是 UTF-8")
+        choice = input("是否转换为 UTF-8 编码再处理？[y/N]: ").strip().lower()
+        if choice == 'y':
+            with open(path, 'r', encoding=encoding, errors='ignore') as f:
+                content = f.read()
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write(content)
+            click.echo(f"{path} 已转换为 UTF-8")
+            return True
+        else:
+            click.echo(f"跳过文件: {path}")
+            return False
+    return True
 
-    if os.path.isfile(path) and is_text_file(path):
-        files.append(path)
-    elif os.path.isdir(path):
-        for root, _, filenames in os.walk(path):
-            for name in filenames:
-                full = os.path.join(root, name)
-                if is_text_file(full):
-                    files.append(full)
+def convert_file(file_path, converter, append):
+    if not ensure_utf8_encoding(file_path):
+        return
 
-    for file in files:
-        with open(file, 'r', encoding='utf-8', errors='ignore') as f:
-            content = f.read()
-        converted = converter.convert(content)
-        with open(file, 'w', encoding='utf-8') as f:
+    with open(file_path, "r", encoding="utf-8") as f:
+        content = f.read()
+    converted = converter.convert(content)
+
+    if append:
+        with open(file_path, "w", encoding="utf-8") as f:
             f.write(converted)
-        click.echo(f"已替换: {file}")
+    else:
+        shutil.copyfile(file_path, file_path + ".bak")
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(converted)
+
+    click.echo(f"已处理: {file_path}")
 
 @click.command()
-@click.option("--file", "is_file", is_flag=True, help="处理文件或文件夹")
-@click.option("--path", type=click.Path(exists=True, readable=True), help="文件或目录路径，仅 --file 时使用")
-@click.option("--t2s", is_flag=True, default=True, help="繁转简（默认）")
-@click.argument("text", required=False)
-def main(is_file, path, t2s, text):
-    """繁简转换工具，默认处理字符串繁转简。"""
-    if is_file:
-        if not path:
-            click.echo("错误：未提供文件路径", err=True)
-            return
-        convert_file(path, to_traditional=not t2s)
+@click.argument('text')
+@click.option('--path', is_flag=True, help='将 text 作为路径，处理目录下所有文本文件')
+@click.option(
+    '--mode',
+    default='t2s',
+    show_default=True,
+    type=click.Choice([
+        'tw2t', 'hk2s', 'hk2t', 'jp2t',
+        's2hk', 's2t', 's2tw', 's2twp',
+        't2hk', 't2jp', 't2s', 't2tw',
+        'tw2s', 'tw2sp'
+    ], case_sensitive=False),
+    help='''\b
+    指定转换模式：
+      t2s    繁体 -> 简体
+      s2t    简体 -> 繁体
+      tw2t   台湾正体 -> 通用繁体
+      hk2s   香港繁体 -> 简体
+      hk2t   香港繁体 -> 通用繁体
+      jp2t   日本汉字 -> 繁体
+      s2hk   简体 -> 香港繁体
+      s2tw   简体 -> 台湾正体
+      s2twp  简体 -> 台湾正体（含词汇转换）
+      t2hk   繁体 -> 香港繁体
+      t2jp   繁体 -> 日本汉字
+      t2tw   繁体 -> 台湾正体
+      tw2s   台湾正体 -> 简体
+      tw2sp  台湾正体 -> 简体（含词汇转换）
+'''
+)
+@click.option('--append', is_flag=True, help='直接覆盖原文件（不备份）')
+def main(text, path, mode, append):
+    converter = OpenCC(mode)
+
+    # 中文路径兼容：确保解码正常
+    text = os.path.normpath(text)
+
+    if path:
+        if os.path.isdir(text):
+            for root, _, files in os.walk(text):
+                for name in files:
+                    file_path = os.path.join(root, name)
+                    if is_text_file(file_path):
+                        convert_file(file_path, converter, append)
+        elif os.path.isfile(text) and is_text_file(text):
+            convert_file(text, converter, append)
+        else:
+            click.echo("提供的路径不是有效的文本文件或文件夹")
     else:
-        if not text:
-            click.echo("错误：未提供文本字符串", err=True)
-            return
-        convert_string(text, to_traditional=not t2s)
+        result = converter.convert(text)
+        click.echo(result)
 
 if __name__ == "__main__":
     main()
