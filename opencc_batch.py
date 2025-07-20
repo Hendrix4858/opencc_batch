@@ -80,7 +80,8 @@ def convert_file(file_path, converter, append):
       tw2sp  台湾正体 -> 简体（含词汇转换）
 '''
 )
-@click.option('--append', is_flag=True, help='直接覆盖原文件（不备份）')
+@click.option('--append', is_flag=True, help='直接覆盖原文件(不备份)')
+@click.version_option("0.1.1", '-v', '--version', message="opencc_batch %(version)s")
 def main(text, path, mode, append):
     converter = OpenCC(mode)
 
