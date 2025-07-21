@@ -50,9 +50,10 @@ def convert_file(file_path, converter, append):
     click.echo(f"已处理: {file_path}")
 
 @click.command()
-@click.argument('text')
-@click.option('--path', is_flag=True, help='将 text 作为路径，处理目录下所有文本文件')
+@click.argument('input')
+@click.option('-p','--path', is_flag=True, help='将 text 作为路径，处理目录下所有文本文件')
 @click.option(
+    '-m',
     '--mode',
     default='t2s',
     show_default=True,
@@ -80,8 +81,8 @@ def convert_file(file_path, converter, append):
       tw2sp  台湾正体 -> 简体（含词汇转换）
 '''
 )
-@click.option('--append', is_flag=True, help='直接覆盖原文件(不备份)')
-@click.version_option("0.1.1", '-v', '--version', message="opencc_batch %(version)s")
+@click.option('-a', '--append', is_flag=True, help='直接覆盖原文件(不备份)')
+@click.version_option("0.1.1", '-v', '--version', help='打印版本信息', message="opencc_batch %(version)s")
 def main(text, path, mode, append):
     converter = OpenCC(mode)
 
